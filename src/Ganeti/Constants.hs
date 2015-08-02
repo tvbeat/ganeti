@@ -2734,6 +2734,9 @@ htDiskScsi = "scsi"
 htDiskSd :: String
 htDiskSd = "sd"
 
+htDiskVirtioScsi :: String
+htDiskVirtioScsi = "virtio-scsi"
+
 htHvmValidDiskTypes :: FrozenSet String
 htHvmValidDiskTypes = ConstantUtils.mkSet [htDiskIoemu, htDiskParavirtual]
 
@@ -2744,6 +2747,7 @@ htKvmValidDiskTypes =
                        htDiskParavirtual,
                        htDiskPflash,
                        htDiskScsi,
+                       htDiskVirtioScsi,
                        htDiskSd]
 
 htCacheDefault :: String

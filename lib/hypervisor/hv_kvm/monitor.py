@@ -524,7 +524,7 @@ class QmpConnection(MonitorSocket):
     self.Execute("netdev_del", {"id": devid})
 
   @_ensure_connection
-  def HotAddDisk(self, disk, devid, uri):
+  def HotAddDiskVirtioBlk(self, disk, devid, uri):
     """Hot-add a disk
 
     Try opening the device to obtain a fd and pass it with SCM_RIGHTS. This
@@ -566,7 +566,47 @@ class QmpConnection(MonitorSocket):
       "drive": devid,
     }
     self.Execute("device_add", arguments)
+  @_ensure_connection
+  def HotAddDiskVirtioScsi(self, disk, devid, uri):
+    """Hot-add a virtio-scsi disk
 
+    Try opening the device to obtain a fd and pass it with SCM_RIGHTS. This
+    will be omitted in case of userspace access mode (open will fail).
+    Then use blockdev-add and then device_add.
+
+    """
+    if os.path.exists(uri):
+      fd = os.open(uri, os.O_RDWR)
+      fdset = self._AddFd(fd)
+      os.close(fd)
+      filename = "/dev/fdset/%s" % fdset
+    else:
+      # The uri is not a file.
+      # This can happen if a userspace uri is provided.
+      filename = uri
+      fdset = None
+
+    arguments = {
+      "options": {
+        "driver": "raw",
+        "id": devid,
+        "file": {
+          "driver": "file",
+          "filename": filename,
+        }
+      }
+    }
+    self.Execute("blockdev-add", arguments)
+
+    if fdset is not None:
+      self._RemoveFdset(fdset)
+
+    arguments = {
+      "driver": "scsi-hd",
+      "id": devid,
+      "drive": devid,
+    }
+    self.Execute("device_add", arguments)
   @_ensure_connection
   def HotDelDisk(self, devid):
     """Hot-del a Disk

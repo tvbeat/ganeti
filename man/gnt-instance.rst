@@ -341,6 +341,7 @@ disk\_type
 
     - ioemu [default] (HVM & KVM)
     - paravirtual (HVM & KVM)
+    - virtio-scsi (KVM)
     - ide (KVM)
     - scsi (KVM)
     - sd (KVM)
