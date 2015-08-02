@@ -2734,6 +2734,9 @@ htDiskScsi = "scsi"
 htDiskSd :: String
 htDiskSd = "sd"
 
+htDiskVirtioscsi :: String
+htDiskVirtioscsi = "virtio-scsi"
+
 htHvmValidDiskTypes :: FrozenSet String
 htHvmValidDiskTypes = ConstantUtils.mkSet [htDiskIoemu, htDiskParavirtual]
 
@@ -2744,6 +2747,7 @@ htKvmValidDiskTypes =
                        htDiskParavirtual,
                        htDiskPflash,
                        htDiskScsi,
+                       htDiskVirtioscsi,
                        htDiskSd]
 
 htCacheDefault :: String
@@ -4037,6 +4041,7 @@ hvcDefaults =
           , (hvBootOrder,                       PyValueEx htBoDisk)
           , (hvNicType,                         PyValueEx htNicParavirtual)
           , (hvDiskType,                        PyValueEx htDiskParavirtual)
+          , (hvDiskType,                        PyValueEx htDiskVirtioscsi)
           , (hvKvmCdromDiskType,                PyValueEx "")
           , (hvKvmDiskAio,                      PyValueEx htKvmAioThreads)
           , (hvUsbMouse,                        PyValueEx "")

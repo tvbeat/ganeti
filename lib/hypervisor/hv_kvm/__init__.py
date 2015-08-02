@@ -899,6 +899,7 @@ class KVMHypervisor(hv_base.BaseHypervisor):
 
     dev_opts = []
     device_driver = None
+    dev_vscsi = None
     disk_type = up_hvp[constants.HV_DISK_TYPE]
     if disk_type == constants.HT_DISK_PARAVIRTUAL:
       if_val = ",if=%s" % self._VIRTIO
@@ -909,6 +910,10 @@ class KVMHypervisor(hv_base.BaseHypervisor):
           device_driver = self._VIRTIO_BLK_PCI
       except errors.HypervisorError, _:
         pass
+    elif disk_type == constants.HT_DISK_VIRTIOSCSI:
+      if_val = ",if=none"
+      dev_vscsi = "virtio-scsi-pci,id=scsi"
+      dev_opts.extend(["-device", dev_vscsi])
     else:
       if_val = ",if=%s" % disk_type
     # AIO mode
@@ -919,6 +924,7 @@ class KVMHypervisor(hv_base.BaseHypervisor):
       aio_val = ""
     # Cache mode
     disk_cache = up_hvp[constants.HV_DISK_CACHE]
+    disk_count=0
     for cfdev, link_name, uri in kvm_disks:
       if cfdev.dev_type in constants.DTS_EXT_MIRROR:
         if disk_cache != "none":
@@ -958,9 +964,15 @@ class KVMHypervisor(hv_base.BaseHypervisor):
                    (device_driver, kvm_devid, kvm_devid))
         dev_val += ",bus=pci.0,addr=%s" % hex(cfdev.pci)
         dev_opts.extend(["-device", dev_val])
+      elif dev_vscsi: 
+        kvm_devid = _GenerateDeviceKVMId(constants.HOTPLUG_TARGET_DISK, cfdev)
+        drive_val += (",id=%s" % kvm_devid)
+        drive_val += (",bus=0,unit=%d" % cfdev.pci)
+        dev = ("scsi-hd,drive=%s,channel=0,scsi-id=0,lun=%s,id=%s"% (kvm_devid, disk_count,kvm_devid))
+        disk_count += 1
+        dev_opts.extend(["-device", dev])
 
       dev_opts.extend(["-drive", drive_val])
-
     return dev_opts
 
   @staticmethod
@@ -1904,21 +1916,26 @@ class KVMHypervisor(hv_base.BaseHypervisor):
       device.pci = self.qmp.GetFreePCISlot()
     kvm_devid = _GenerateDeviceKVMId(dev_type, device)
     runtime = self._LoadKVMRuntime(instance)
+    up_hvp = runtime[2]
     if dev_type == constants.HOTPLUG_TARGET_DISK:
+      disk_type = up_hvp[constants.HV_DISK_TYPE]
       uri = _GetDriveURI(device, extra[0], extra[1])
-      self.qmp.HotAddDisk(device, kvm_devid, uri)
+      if disk_type == "virtio-scsi":
+        self.qmp.HotAddvscsi(device, kvm_devid, uri)
+      else:
+        self.qmp.HotAddDisk(device, kvm_devid, uri)
     elif dev_type == constants.HOTPLUG_TARGET_NIC:
       kvmpath = instance.hvparams[constants.HV_KVM_PATH]
       kvmhelp = self._GetKVMOutput(kvmpath, self._KVMOPT_HELP)
       devlist = self._GetKVMOutput(kvmpath, self._KVMOPT_DEVICELIST)
-      up_hvp = runtime[2]
       features, _, _ = self._GetNetworkDeviceFeatures(up_hvp, devlist, kvmhelp)
       (tap, tapfds, vhostfds) = OpenTap(features=features)
       self._ConfigureNIC(instance, seq, device, tap)
       self.qmp.HotAddNic(device, kvm_devid, tapfds, vhostfds, features)
       utils.WriteFile(self._InstanceNICFile(instance.name, seq), data=tap)
 
-    self._VerifyHotplugCommand(instance, device, kvm_devid, True)
+    if disk_type != "virtio-scsi":
+      self._VerifyHotplugCommand(instance, device, kvm_devid, True)
     # update relevant entries in runtime file
     index = _DEVICE_RUNTIME_INDEX[dev_type]
     entry = _RUNTIME_ENTRY[dev_type](device, extra)
