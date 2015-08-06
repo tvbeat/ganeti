@@ -617,6 +617,14 @@ disk\_aio
     so if not explicitly specified, the native mode will not
     be used. Possible values are: threads or native.
 
+virtio\_scsi\_queues
+    Valid for the KVM hypervisor with disk\_type=virtio\_scsi.
+
+    This optional parameter enables each virtual CPU to have a separate
+    queue and interrupt to use without affecting other vCPUs. It adds
+    the attribute num\_queues to the virtio-scsi controller. It is set
+    to 1 by default and the maximum number of queues is limited to ``8``.
+
 security\_model
     Valid for the KVM hypervisor.
 
