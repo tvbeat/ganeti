@@ -1704,6 +1704,9 @@ hvKvmPath = "kvm_path"
 hvKvmDiskAio :: String
 hvKvmDiskAio = "disk_aio"
 
+hvKvmVirtioScsiQueues :: String
+hvKvmVirtioScsiQueues = "virtio_scsi_queues"
+
 hvKvmSpiceAudioCompr :: String
 hvKvmSpiceAudioCompr = "spice_playback_compression"
 
@@ -1910,6 +1913,7 @@ hvsParameterTypes = Map.fromList
   , (hvKvmMigrationCaps,                VTypeString)
   , (hvKvmPath,                         VTypeString)
   , (hvKvmDiskAio,                      VTypeString)
+  , (hvKvmVirtioScsiQueues,             VTypeInt)
   , (hvKvmSpiceAudioCompr,              VTypeBool)
   , (hvKvmSpiceBind,                    VTypeString)
   , (hvKvmSpiceIpVersion,               VTypeInt)
@@ -4043,6 +4047,7 @@ hvcDefaults =
           , (hvDiskType,                        PyValueEx htDiskParavirtual)
           , (hvKvmCdromDiskType,                PyValueEx "")
           , (hvKvmDiskAio,                      PyValueEx htKvmAioThreads)
+          , (hvKvmVirtioScsiQueues,             PyValueEx (1 :: Int))
           , (hvUsbMouse,                        PyValueEx "")
           , (hvKeymap,                          PyValueEx "")
           , (hvMigrationPort,                   PyValueEx (8102 :: Int))

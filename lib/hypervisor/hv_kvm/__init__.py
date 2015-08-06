@@ -353,6 +353,7 @@ class KVMHypervisor(hv_base.BaseHypervisor):
       hv_base.ParamInSet(False, constants.HT_KVM_FLAG_VALUES),
     constants.HV_VHOST_NET: hv_base.NO_CHECK,
     constants.HV_VIRTIO_NET_QUEUES: hv_base.OPT_VIRTIO_NET_QUEUES_CHECK,
+    constants.HV_KVM_VIRTIO_SCSI_QUEUES: hv_base.OPT_VIRTIO_SCSI_QUEUES_CHECK,
     constants.HV_KVM_USE_CHROOT: hv_base.NO_CHECK,
     constants.HV_KVM_USER_SHUTDOWN: hv_base.NO_CHECK,
     constants.HV_MEM_PATH: hv_base.OPT_DIR_CHECK,
@@ -901,6 +902,7 @@ class KVMHypervisor(hv_base.BaseHypervisor):
     device_driver = None
     dev_vscsi = None
     disk_type = up_hvp[constants.HV_DISK_TYPE]
+    num_queues = up_hvp[constants.HV_KVM_VIRTIO_SCSI_QUEUES]
     if disk_type == constants.HT_DISK_PARAVIRTUAL:
       if_val = ",if=%s" % self._VIRTIO
       try:
@@ -912,7 +914,10 @@ class KVMHypervisor(hv_base.BaseHypervisor):
         pass
     elif disk_type == constants.HT_DISK_VIRTIO_SCSI:
       if_val = ",if=none"
-      dev_vscsi = "virtio-scsi-pci,id=scsi"
+      if num_queues == 1:
+        dev_vscsi = "virtio-scsi-pci,id=scsi"
+      else:
+        dev_vscsi = "virtio-scsi-pci,id=scsi,num_queues=%s" % num_queues
       dev_opts.extend(["-device", dev_vscsi])
     else:
       if_val = ",if=%s" % disk_type
