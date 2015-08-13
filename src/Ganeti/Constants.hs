@@ -1695,6 +1695,9 @@ hvKvmPath = "kvm_path"
 hvKvmDiskAio :: String
 hvKvmDiskAio = "disk_aio"
 
+hvKvmScsiControllerType :: String
+hvKvmScsiControllerType = "scsi_controller_type"
+
 hvKvmSpiceAudioCompr :: String
 hvKvmSpiceAudioCompr = "spice_playback_compression"
 
@@ -1901,6 +1904,7 @@ hvsParameterTypes = Map.fromList
   , (hvKvmMigrationCaps,                VTypeString)
   , (hvKvmPath,                         VTypeString)
   , (hvKvmDiskAio,                      VTypeString)
+  , (hvKvmScsiControllerType,           VTypeString)
   , (hvKvmSpiceAudioCompr,              VTypeBool)
   , (hvKvmSpiceBind,                    VTypeString)
   , (hvKvmSpiceIpVersion,               VTypeInt)
@@ -2725,6 +2729,18 @@ htDiskScsi = "scsi"
 htDiskSd :: String
 htDiskSd = "sd"
 
+htDiskScsiGeneric :: String
+htDiskScsiGeneric = "scsi-generic"
+
+htDiskScsiBlock :: String
+htDiskScsiBlock = "scsi-block"
+
+htDiskScsiCd :: String
+htDiskScsiCd = "scsi-cd"
+
+htDiskScsiHd :: String
+htDiskScsiHd = "scsi-hd"
+
 htHvmValidDiskTypes :: FrozenSet String
 htHvmValidDiskTypes = ConstantUtils.mkSet [htDiskIoemu, htDiskParavirtual]
 
@@ -2735,7 +2751,28 @@ htKvmValidDiskTypes =
                        htDiskParavirtual,
                        htDiskPflash,
                        htDiskScsi,
-                       htDiskSd]
+                       htDiskSd,
+                       htDiskScsiGeneric,
+                       htDiskScsiBlock,
+                       htDiskScsiHd,
+                       htDiskScsiCd]
+
+-- * SCSI controller types
+
+htScsiControllerLsi :: String
+htScsiControllerLsi = "lsi"
+
+htScsiControllerVirtio :: String
+htScsiControllerVirtio = "virtio-scsi-pci"
+
+htScsiControllerMegasas :: String
+htScsiControllerMegasas = "megasas"
+
+htKvmValidScsiControllerTypes :: FrozenSet String
+htKvmValidScsiControllerTypes =
+  ConstantUtils.mkSet [htScsiControllerLsi,
+                       htScsiControllerVirtio,
+                       htScsiControllerMegasas]
 
 htCacheDefault :: String
 htCacheDefault = "default"
@@ -3966,6 +4003,7 @@ hvcDefaults =
           , (hvVncX509,                         PyValueEx "")
           , (hvVncX509Verify,                   PyValueEx False)
           , (hvVncPasswordFile,                 PyValueEx "")
+          , (hvKvmScsiControllerType,           PyValueEx htScsiControllerLsi)
           , (hvKvmSpiceBind,                    PyValueEx "")
           , (hvKvmSpiceIpVersion,           PyValueEx ifaceNoIpVersionSpecified)
           , (hvKvmSpicePasswordFile,            PyValueEx "")

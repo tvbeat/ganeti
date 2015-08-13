@@ -462,11 +462,8 @@ class TestGenerateDeviceKVMId(unittest.TestCase):
     device = objects.NIC()
     target = constants.HOTPLUG_TARGET_NIC
     fn = hv_kvm._GenerateDeviceKVMId
-    self.assertRaises(errors.HotplugError, fn, target, device)
-
-    device.pci = 5
     device.uuid = "003fc157-66a8-4e6d-8b7e-ec4f69751396"
-    self.assertTrue(re.match("hotnic-003fc157-pci-5", fn(target, device)))
+    self.assertTrue(re.match("hotnic-003fc157", fn(target, device)))
 
 
 class TestGetRuntimeInfo(unittest.TestCase):
@@ -490,7 +487,7 @@ class TestGetRuntimeInfo(unittest.TestCase):
 
     device.uuid = "003fc157-66a8-4e6d-8b7e-ec4f69751396"
     devinfo = hv_kvm._GetExistingDeviceInfo(target, device, runtime)
-    self.assertTrue(devinfo.pci==6)
+    self.assertTrue(devinfo.hvinfo["addr"] == "0x8")
 
   def testDisk(self):
     device = objects.Disk()
@@ -501,7 +498,7 @@ class TestGetRuntimeInfo(unittest.TestCase):
 
     device.uuid = "9f5c5bd4-6f60-480b-acdc-9bb1a4b7df79"
     (devinfo, _, __) = hv_kvm._GetExistingDeviceInfo(target, device, runtime)
-    self.assertTrue(devinfo.pci==5)
+    self.assertTrue(devinfo.hvinfo["addr"] == "0xa")
 
 
 class PostfixMatcher(object):
