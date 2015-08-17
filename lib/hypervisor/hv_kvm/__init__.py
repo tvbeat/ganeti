@@ -478,6 +478,7 @@ class KVMHypervisor(hv_base.BaseHypervisor):
       hv_base.ParamInSet(False, constants.HT_KVM_FLAG_VALUES),
     constants.HV_VHOST_NET: hv_base.NO_CHECK,
     constants.HV_VIRTIO_NET_QUEUES: hv_base.OPT_VIRTIO_NET_QUEUES_CHECK,
+    constants.HV_VIRTIO_SCSI_QUEUES: hv_base.OPT_VIRTIO_SCSI_QUEUES_CHECK,
     constants.HV_KVM_USE_CHROOT: hv_base.NO_CHECK,
     constants.HV_KVM_USER_SHUTDOWN: hv_base.NO_CHECK,
     constants.HV_MEM_PATH: hv_base.OPT_DIR_CHECK,
@@ -533,6 +534,9 @@ class KVMHypervisor(hv_base.BaseHypervisor):
   _DEVICE_DRIVER_SUPPORTED = \
     staticmethod(lambda drv, devlist:
                  re.compile(r"^name \"%s\"" % drv, re.M).search(devlist))
+  _DEVICE_DRIVER_QUEUES = \
+    staticmethod(lambda drv, devinfo:
+                 re.compile(r"^%s\.num_queues" % drv, re.M).search(devinfo))
   # match  -drive.*boot=on|off on different lines, but in between accept only
   # dashes not preceeded by a new line (which would mean another option
   # different than -drive is starting)
@@ -1205,10 +1209,22 @@ class KVMHypervisor(hv_base.BaseHypervisor):
       # In case a SCSI disk is given, QEMU adds
       # a SCSI contorller (LSI Logic / Symbios Logic 53c895a)
       # automatically. Here, we add it explicitly with the default id.
-      kvm_cmd.extend([
-        "-device",
-        "%s,id=scsi" % hvp[constants.HV_KVM_SCSI_CONTROLLER_TYPE]
-        ])
+      num_queues=hvp[constants.HV_VIRTIO_SCSI_QUEUES]
+      if num_queues  > 1:
+        scsi_cont=hvp[constants.HV_KVM_SCSI_CONTROLLER_TYPE]
+        optlist = ["-device", "%s,?" %scsi_cont]
+        result = utils.RunCmd([kvm] + optlist)
+        if result.failed:
+          raise errors.HypervisorError("Unable to get KVM device options output") 
+        if self._DEVICE_DRIVER_QUEUES(scsi_cont,result.output):
+          kvm_cmd.extend(["-device",("%s,id=scsi,num_queues=%d" %(scsi_cont,num_queues))])
+        else:
+          raise errors.HypervisorError("Device driver does not support multiqueue")
+      else:
+        kvm_cmd.extend([
+          "-device",
+          "%s,id=scsi" % hvp[constants.HV_KVM_SCSI_CONTROLLER_TYPE]
+          ])
 
     kvm_cmd.extend(["-balloon", "virtio"])
     kvm_cmd.extend(["-daemonize"])
