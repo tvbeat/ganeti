@@ -343,6 +343,13 @@ scsi\_controller\_type
     - megasas
     - virtio-scsi-pci
 
+virtio\_scsi\_queues
+    Valid for the KVM hypervisor.
+
+    This optional parameter enables each virtual CPU to have a separate
+    queue and interrupt to use without affecting other vCPUs. It adds
+    the attribute num\_queues to the SCSI controller if supported. It is
+    ignored if set to to 1 and the maximum number of queues is limited to ``8``.
 
 disk\_type
     Valid for the Xen HVM and KVM hypervisors.
