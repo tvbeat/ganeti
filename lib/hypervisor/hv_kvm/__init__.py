@@ -1209,22 +1209,20 @@ class KVMHypervisor(hv_base.BaseHypervisor):
       # In case a SCSI disk is given, QEMU adds
       # a SCSI contorller (LSI Logic / Symbios Logic 53c895a)
       # automatically. Here, we add it explicitly with the default id.
+      # Also multiqueue option is added if set and supported.
       num_queues=hvp[constants.HV_VIRTIO_SCSI_QUEUES]
+      scsi_cont=hvp[constants.HV_KVM_SCSI_CONTROLLER_TYPE]
+      optlist = ("%s,id=scsi"%scsi_cont)
       if num_queues  > 1:
-        scsi_cont=hvp[constants.HV_KVM_SCSI_CONTROLLER_TYPE]
-        optlist = ["-device", "%s,?" %scsi_cont]
-        result = utils.RunCmd([kvm] + optlist)
+        result = utils.RunCmd([kvm] + ["-device", "%s,?" %scsi_cont])
         if result.failed:
           raise errors.HypervisorError("Unable to get KVM device options output") 
         if self._DEVICE_DRIVER_QUEUES(scsi_cont,result.output):
-          kvm_cmd.extend(["-device",("%s,id=scsi,num_queues=%d" %(scsi_cont,num_queues))])
+          optlist += (",num_queues=%d" %num_queues)
         else:
           raise errors.HypervisorError("Device driver does not support multiqueue")
-      else:
-        kvm_cmd.extend([
-          "-device",
-          "%s,id=scsi" % hvp[constants.HV_KVM_SCSI_CONTROLLER_TYPE]
-          ])
+      
+      kvm_cmd.extend(["-device",optlist])
 
     kvm_cmd.extend(["-balloon", "virtio"])
     kvm_cmd.extend(["-daemonize"])
