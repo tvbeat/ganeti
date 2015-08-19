@@ -1210,19 +1210,20 @@ class KVMHypervisor(hv_base.BaseHypervisor):
       # a SCSI contorller (LSI Logic / Symbios Logic 53c895a)
       # automatically. Here, we add it explicitly with the default id.
       # Also multiqueue option is added if set and supported.
-      num_queues=hvp[constants.HV_VIRTIO_SCSI_QUEUES]
-      scsi_cont=hvp[constants.HV_KVM_SCSI_CONTROLLER_TYPE]
+      num_queues = hvp[constants.HV_VIRTIO_SCSI_QUEUES]
+      scsi_cont = hvp[constants.HV_KVM_SCSI_CONTROLLER_TYPE]
       optlist = ("%s,id=scsi"%scsi_cont)
-      if num_queues  > 1:
+      if num_queues > 1:
         result = utils.RunCmd([kvm] + ["-device", "%s,?" %scsi_cont])
         if result.failed:
-          raise errors.HypervisorError("Unable to get KVM device options output") 
-        if self._DEVICE_DRIVER_QUEUES(scsi_cont,result.output):
+          raise errors.HypervisorError("Unable to get KVM device options")
+        if self._DEVICE_DRIVER_QUEUES(scsi_cont, result.output):
           optlist += (",num_queues=%d" %num_queues)
         else:
-          raise errors.HypervisorError("Device driver does not support multiqueue")
-      
-      kvm_cmd.extend(["-device",optlist])
+          raise errors.HypervisorError(\
+                       "Device driver does not support multiqueue")
+
+      kvm_cmd.extend(["-device", optlist])
 
     kvm_cmd.extend(["-balloon", "virtio"])
     kvm_cmd.extend(["-daemonize"])
