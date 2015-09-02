@@ -267,6 +267,20 @@ def WriteFile(file_name, fn=None, data=None,
   return result
 
 
+def WriteConfigfsFile(file_name, value):
+  """Simple function to write to configfs, WriteFile is no option because
+  configfs does not allow creation of tempfile.
+
+  @type file_name: string
+  @file_name: path of file to write to
+  @type value: string
+  @value: string value to write to file
+  """
+  f = open(file_name,"w")
+  f.write(value)
+  f.close()
+
+
 def GetFileID(path=None, fd=None):
   """Returns the file 'id', i.e. the dev/inode and mtime information.
 

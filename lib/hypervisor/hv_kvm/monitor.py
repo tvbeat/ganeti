@@ -521,6 +521,13 @@ class QmpConnection(MonitorSocket):
     self.Execute("netdev_del", {"id": devid})
 
   @_ensure_connection
+  def HotAddVhostDisk(self, disk):
+    """Hot-add a Vhost-scsi disk
+
+    """
+    self.Execute("device_add", disk.hvinfo)
+
+  @_ensure_connection
   def HotAddDisk(self, disk, devid, uri, drive_add_fn=None):
     """Hot-add a disk
 
