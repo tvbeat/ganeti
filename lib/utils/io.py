@@ -267,6 +267,13 @@ def WriteFile(file_name, fn=None, data=None,
   return result
 
 
+def WriteConfigfsFile(file_name, value):
+  f = open(file_name,"w")
+  f.write(value)
+  f.close()
+  return
+
+
 def GetFileID(path=None, fd=None):
   """Returns the file 'id', i.e. the dev/inode and mtime information.
 

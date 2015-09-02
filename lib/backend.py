@@ -2733,6 +2733,12 @@ def InstanceShutdown(instance, timeout, reason, store_reason=True):
     if _GetInstanceInfo(instance):
       _Fail("Could not shutdown instance '%s' even by destroy", instance.name)
 
+  if instance.hvparams[constants.HV_DISK_TYPE] == constants.HT_DISK_VHOST_SCSI:
+    kvm_runtime = hyper._LoadKVMRuntime(instance)
+    kvm_disks = kvm_runtime[3]
+    for disk, link_name, uri in kvm_disks:
+      hyper._RemoveKVMBlockDevicesVhostOptions(disk)
+
   try:
     hyper.CleanupInstance(instance.name)
   except errors.HypervisorError, err:

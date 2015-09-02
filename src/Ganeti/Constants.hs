@@ -1823,6 +1823,7 @@ hvVirtioNetQueues = "virtio_net_queues"
 
 hvVirtioScsiQueues :: String
 hvVirtioScsiQueues = "virtio_scsi_queues"
+
 hvVifScript :: String
 hvVifScript = "vif_script"
 
@@ -2729,6 +2730,9 @@ htDiskPflash = "pflash"
 htDiskScsi :: String
 htDiskScsi = "scsi"
 
+htDiskVhostScsi :: String
+htDiskVhostScsi = "vhost-scsi-pci"
+
 htDiskSd :: String
 htDiskSd = "sd"
 
@@ -2754,6 +2758,7 @@ htKvmValidDiskTypes =
                        htDiskParavirtual,
                        htDiskPflash,
                        htDiskScsi,
+                       htDiskVhostScsi,
                        htDiskSd,
                        htDiskScsiGeneric,
                        htDiskScsiBlock,

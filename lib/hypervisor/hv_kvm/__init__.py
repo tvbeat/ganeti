@@ -38,6 +38,7 @@ import os.path
 import re
 import tempfile
 import time
+import uuid
 import logging
 import pwd
 import shutil
@@ -143,6 +144,7 @@ _HOTPLUGABLE_DEVICE_TYPES = {
     constants.HT_DISK_SCSI_GENERIC,
     constants.HT_DISK_SCSI_HD,
     constants.HT_DISK_SCSI_CD,
+    constants.HT_DISK_VHOST_SCSI,
     ]
   }
 
@@ -226,7 +228,7 @@ def _GenerateDeviceHVInfoStr(hvinfo):
   return hvinfo_str
 
 
-def _GenerateDeviceHVInfo(dev_type, kvm_devid, hv_dev_type, bus_slots):
+def _GenerateDeviceHVInfo(dev_type, kvm_devid, hv_dev_type, bus_slots, wwpn = None):
   """Helper function to generate hvinfo of a device (disk, NIC)
 
   @type dev_type: string
@@ -252,23 +254,32 @@ def _GenerateDeviceHVInfo(dev_type, kvm_devid, hv_dev_type, bus_slots):
   slots = bus_slots[bus]
   slot = utils.GetFreeSlot(slots, reserve=True)
 
-  hvinfo = {
-    "driver": driver,
-    "id": kvm_devid,
-    "bus": bus,
-    }
+  if driver == constants.HT_DISK_VHOST_SCSI:
+    if wwpn == None:
+      raise errors.HypervisorError("wwpn must be set for vhost-scsi-pci device")
+    else:
+      hvinfo = {
+        "driver": driver,
+        "id": kvm_devid,
+        "wwpn": wwpn,
+        }
+  else:
+    hvinfo = {
+      "driver": driver,
+      "id": kvm_devid,
+      "bus": bus,
+      }
 
-  if bus == _PCI_BUS:
-    hvinfo.update({
-      "addr": hex(slot),
-      })
-  elif bus == _SCSI_BUS:
-    hvinfo.update({
-      "channel": 0,
-      "scsi-id": slot,
-      "lun": 0,
-      })
-
+    if bus == _PCI_BUS:
+      hvinfo.update({
+	"addr": hex(slot),
+	})
+    elif bus == _SCSI_BUS:
+      hvinfo.update({
+	"channel": 0,
+	"scsi-id": slot,
+	"lun": 0,
+	})
   return hvinfo
 
 
@@ -1004,6 +1015,70 @@ class KVMHypervisor(hv_base.BaseHypervisor):
         data.append(info)
     return data
 
+  def _GenerateVhostDiskWwpn(self, kvm_disks):
+    """Generate wwpn for vhost-scsi-pci device
+    @type kvm_disks: list of tuples
+    @param kvm_disks: list of tuples [(disk, link_name, uri)..]
+    """
+    valid = []
+    wwpn = None
+    for cfdev, link_name, uri in kvm_disks:
+      valid.append(cfdev.hvinfo["wwpn"])
+    while True:
+      wwpn = "naa.6001406%s" % str(uuid.uuid4())[:10]
+      wwpn = wwpn.replace('-', '')
+      if wwpn not in valid:
+        break
+    return wwpn
+
+  def _GenerateKVMBlockDevicesVhostOptions(self, up_hvp, kvm_disks):
+    """Generate KVM option for vhost-scsi disks
+
+    @type up_hvp: dict
+    @param up_hvp: the instance's runtime hypervisor parameters
+    @type kvm_disks: list of tuples
+    @param kvm_disks: list of tuples [(disk, link_name, uri)..]
+    """
+    devopts = []
+    for cfdev, link_name, uri in kvm_disks:
+      wwpn = cfdev.hvinfo["wwpn"]
+      vdisk_path = ("/sys/kernel/config/target/core/iblock_0/disk_%s" % wwpn)
+      utils.Makedirs(vdisk_path)
+      drive_uri = _GetDriveURI(cfdev, link_name, uri)
+      path = vdisk_path + "/control"
+      value = "udev_path=" + drive_uri
+      utils.WriteConfigfsFile(path, value)
+      path = vdisk_path + "/udev_path"
+      value = drive_uri
+      utils.WriteConfigfsFile(path, value)
+      path = vdisk_path + "/enable"
+      value = "1"
+      utils.WriteConfigfsFile(path, value)
+      lun_path = ("/sys/kernel/config/target/vhost/%s/tpgt_0/lun/lun_0" % wwpn)
+      utils.Makedirs(lun_path)
+      optlist = ["ln", "-sf", vdisk_path,\
+                 (lun_path + "/virtual-scsi-port")]
+      utils.RunCmd(optlist)
+      path = ("/sys/kernel/config/target/vhost/%s/tpgt_0/nexus" % wwpn)
+      nexus_wwpn = wwpn[:10] + "7" + wwpn[11:]
+      utils.WriteConfigfsFile(path, nexus_wwpn)
+      opts = _GenerateDeviceHVInfoStr(cfdev.hvinfo)
+      devopts.extend(["-device", opts])
+
+    return devopts
+
+  def _RemoveKVMBlockDevicesVhostOptions(self, disk):
+      wwpn = disk.hvinfo["wwpn"]
+      if wwpn:
+	vdisk_path = ("/sys/kernel/config/target/core/iblock_0/disk_%s" % wwpn)
+	lun_path = ("/sys/kernel/config/target/vhost/%s/tpgt_0/lun/lun_0" % wwpn)
+	optlist = ["rm", (lun_path + "/virtual-scsi-port")]
+	utils.RunCmd(optlist)
+	utils.RemoveDir(lun_path)
+	utils.RemoveDir(("/sys/kernel/config/target/vhost/%s/tpgt_0/" % wwpn))
+	utils.RemoveDir(("/sys/kernel/config/target/vhost/%s/" % wwpn))
+	utils.RemoveDir(vdisk_path)
+
   def _GenerateKVMBlockDevicesOptions(self, up_hvp, kvm_disks,
                                       kvmhelp, devlist):
     """Generate KVM options regarding instance's block devices.
@@ -1211,7 +1286,6 @@ class KVMHypervisor(hv_base.BaseHypervisor):
       # automatically. Here, we add it explicitly with the default id.
       # Also multiqueue option is added if set and supported.
       num_queues = hvp[constants.HV_VIRTIO_SCSI_QUEUES]
-      scsi_cont = hvp[constants.HV_KVM_SCSI_CONTROLLER_TYPE]
       optlist = ("%s,id=scsi" % scsi_cont)
       if num_queues > 1:
         result = utils.RunCmd([kvm] + ["-device", "%s,?" % scsi_cont])
@@ -1222,7 +1296,6 @@ class KVMHypervisor(hv_base.BaseHypervisor):
         else:
           raise errors.HypervisorError(\
                        "Device driver does not support multiqueue")
-
       kvm_cmd.extend(["-device", optlist])
 
     kvm_cmd.extend(["-balloon", "virtio"])
@@ -1509,12 +1582,15 @@ class KVMHypervisor(hv_base.BaseHypervisor):
       kvm_cmd.extend(hvp[constants.HV_KVM_EXTRA].split(" "))
 
     kvm_disks = []
+    wwpn = None
     for disk, link_name, uri in block_devices:
       dev_type = constants.HOTPLUG_TARGET_DISK
       kvm_devid = _GenerateDeviceKVMId(dev_type, disk)
       hv_dev_type = _DEVICE_TYPE[dev_type](hvp)
+      if hvp[constants.HV_DISK_TYPE] == constants.HT_DISK_VHOST_SCSI:
+        wwpn = self._GenerateVhostDiskWwpn(kvm_disks)
       disk.hvinfo = _GenerateDeviceHVInfo(dev_type, kvm_devid,
-                                          hv_dev_type, bus_slots)
+                                          hv_dev_type, bus_slots, wwpn)
       kvm_disks.append((disk, link_name, uri))
 
     kvm_nics = []
@@ -1822,10 +1898,14 @@ class KVMHypervisor(hv_base.BaseHypervisor):
         continue
       self._ConfigureNIC(instance, nic_seq, nic, taps[nic_seq])
 
-    bdev_opts = self._GenerateKVMBlockDevicesOptions(up_hvp,
-                                                     kvm_disks,
-                                                     kvmhelp,
-                                                     devlist)
+    if up_hvp[constants.HV_DISK_TYPE] == constants.HT_DISK_VHOST_SCSI:
+      bdev_opts = self._GenerateKVMBlockDevicesVhostOptions(up_hvp,
+                                                            kvm_disks)
+    else:
+      bdev_opts = self._GenerateKVMBlockDevicesOptions(up_hvp,
+                                                       kvm_disks,
+                                                       kvmhelp,
+                                                       devlist)
     kvm_cmd.extend(bdev_opts)
     # CPU affinity requires kvm to start paused, so we set this flag if the
     # instance is not already paused and if we are not going to accept a
@@ -2104,11 +2184,17 @@ class KVMHypervisor(hv_base.BaseHypervisor):
     up_hvp = runtime[2]
     device_type = _DEVICE_TYPE[dev_type](up_hvp)
     bus_state = self._GetBusSlots(runtime)
+    wwpn = None
+    if dev_type == constants.HOTPLUG_TARGET_DISK and \
+      device_type == constants.HT_DISK_VHOST_SCSI:
+      kvm_disks = runtime[3]
+      wwpn = self._GenerateVhostDiskWwpn(kvm_disks)
     # in case of hot-mod this is given
     if not device.hvinfo:
       device.hvinfo = _GenerateDeviceHVInfo(dev_type, kvm_devid,
-                                            device_type, bus_state)
+                                            device_type, bus_state, wwpn)
     if dev_type == constants.HOTPLUG_TARGET_DISK:
+
       # Add a drive via HMP
       # This must be done indirectly due to the fact that we pass the drive's
       # file descriptor via QMP first, then we add the corresponding drive that
@@ -2118,12 +2204,17 @@ class KVMHypervisor(hv_base.BaseHypervisor):
       # later (e.g., via an drive_add HMP command).
       uri = _GetDriveURI(device, extra[0], extra[1])
 
-      def drive_add_fn(filename):
-        cmd = "drive_add dummy file=%s,if=none,id=%s,format=raw" % \
-          (filename, kvm_devid)
-        self._CallMonitorCommand(instance.name, cmd)
+      if device_type == constants.HT_DISK_VHOST_SCSI:
+        diskadd = [(device, extra[0], extra[1])]
+        self._GenerateKVMBlockDevicesVhostOptions(up_hvp, diskadd)
+        self.qmp.HotAddVhostDisk(device)
+      else:
+        def drive_add_fn(filename):
+          cmd = "drive_add dummy file=%s,if=none,id=%s,format=raw" % \
+            (filename, kvm_devid)
+          self._CallMonitorCommand(instance.name, cmd)
 
-      self.qmp.HotAddDisk(device, kvm_devid, uri, drive_add_fn)
+        self.qmp.HotAddDisk(device, kvm_devid, uri, drive_add_fn)
     elif dev_type == constants.HOTPLUG_TARGET_NIC:
       kvmpath = instance.hvparams[constants.HV_KVM_PATH]
       kvmhelp = self._GetKVMOutput(kvmpath, self._KVMOPT_HELP)
@@ -2150,18 +2241,24 @@ class KVMHypervisor(hv_base.BaseHypervisor):
 
     """
     runtime = self._LoadKVMRuntime(instance)
+    up_hvp = runtime[2]
     entry = _GetExistingDeviceInfo(dev_type, device, runtime)
     kvm_device = _RUNTIME_DEVICE[dev_type](entry)
+    device_type = _DEVICE_TYPE[dev_type](up_hvp)
     kvm_devid = _GenerateDeviceKVMId(dev_type, kvm_device)
     if dev_type == constants.HOTPLUG_TARGET_DISK:
       self.qmp.HotDelDisk(kvm_devid)
-      # drive_del is not implemented yet in qmp
-      command = "drive_del %s\n" % kvm_devid
-      self._CallMonitorCommand(instance.name, command)
+      if device_type != constants.HT_DISK_VHOST_SCSI:
+        # drive_del is not implemented yet in qmp
+        command = "drive_del %s\n" % kvm_devid
+        self._CallMonitorCommand(instance.name, command)
     elif dev_type == constants.HOTPLUG_TARGET_NIC:
       self.qmp.HotDelNic(kvm_devid)
       utils.RemoveFile(self._InstanceNICFile(instance.name, seq))
     self._VerifyHotplugCommand(instance, kvm_devid, False)
+    if dev_type == constants.HOTPLUG_TARGET_DISK and \
+      device_type == constants.HT_DISK_VHOST_SCSI:
+      self._RemoveKVMBlockDevicesVhostOptions(entry[0])
     index = _DEVICE_RUNTIME_INDEX[dev_type]
     runtime[index].remove(entry)
     self._SaveKVMRuntime(instance, runtime)
